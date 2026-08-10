@@ -1,0 +1,36 @@
+# Development dependencies.
+#
+#   pip install -r requirements-dev.txt
+#
+# The test suite deliberately needs NONE of the database drivers. It runs
+# against the standard library's sqlite3 and in-process fakes, and there is a
+# test asserting that no driver was imported. Install the drivers below only if
+# you want to exercise a real backend by hand.
+
+# --- required to run the tests ------------------------------------------- #
+pytest>=7.0
+pytest-cov>=4.0
+
+# --- optional at runtime, but assumed by the test fixtures ---------------- #
+PyYAML>=5.4
+
+# --- linting and type checking -------------------------------------------- #
+ruff>=0.1
+mypy>=1.0
+
+# --- packaging ------------------------------------------------------------ #
+build>=1.0
+twine>=4.0
+
+# --- database drivers: NOT needed for the test suite ---------------------- #
+# Uncomment only what you intend to test against a live server.
+#
+# mysql-connector-python>=8.0
+# psycopg[binary]>=3.1
+# oracledb>=1.4
+# snowflake-connector-python>=3.0
+# azure-storage-blob>=12.14
+# azure-storage-file-datalake>=12.9
+# azure-identity>=1.13
+# azure-keyvault-secrets>=4.7
+# pandas>=1.3

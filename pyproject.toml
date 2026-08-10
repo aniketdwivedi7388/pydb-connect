@@ -1,0 +1,178 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pydb-connect"
+version = "1.0.0"
+description = "Config-driven database and object-store connectivity: one interface, many backends, secrets never in the repo."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Aniket Dwivedi" }]
+maintainers = [{ name = "Aniket Dwivedi" }]
+keywords = [
+    "database",
+    "connection-pool",
+    "data-engineering",
+    "etl",
+    "bulk-insert",
+    "postgres",
+    "mysql",
+    "oracle",
+    "snowflake",
+    "adls",
+    "secrets",
+    "retry",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: SQL",
+    "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+# The core library depends on the standard library and nothing else.
+# PyYAML is optional: without it, configuration files must be JSON.
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=5.4"]
+mysql = ["mysql-connector-python>=8.0"]
+postgres = ["psycopg[binary]>=3.1"]
+oracle = ["oracledb>=1.4"]
+snowflake = ["snowflake-connector-python>=3.0"]
+azure = [
+    "azure-storage-blob>=12.14",
+    "azure-storage-file-datalake>=12.9",
+    "azure-identity>=1.13",
+    "azure-keyvault-secrets>=4.7",
+]
+pandas = ["pandas>=1.3"]
+all = [
+    "PyYAML>=5.4",
+    "mysql-connector-python>=8.0",
+    "psycopg[binary]>=3.1",
+    "oracledb>=1.4",
+    "snowflake-connector-python>=3.0",
+    "azure-storage-blob>=12.14",
+    "azure-storage-file-datalake>=12.9",
+    "azure-identity>=1.13",
+    "azure-keyvault-secrets>=4.7",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "PyYAML>=5.4",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/aniketdwivedi7388/pydb-connect"
+Repository = "https://github.com/aniketdwivedi7388/pydb-connect"
+Issues = "https://github.com/aniketdwivedi7388/pydb-connect/issues"
+Documentation = "https://github.com/aniketdwivedi7388/pydb-connect/tree/main/docs"
+
+[project.scripts]
+pydb = "pydbconnect.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["pydbconnect*"]
+exclude = ["tests*", "examples*", "docs*", "config*"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+    "error::DeprecationWarning:pydbconnect.*",
+]
+
+[tool.coverage.run]
+source = ["pydbconnect"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.mypy]
+# No python_version pin: current mypy refuses targets below 3.10, while this
+# package still supports 3.9. requires-python is the source of truth, and the
+# annotations avoid 3.10-only syntax so both stay valid.
+#
+# warn_unused_configs is off because the driver overrides below are unused
+# whenever those drivers are absent - which is the normal case, and the whole
+# point of the lazy imports.
+warn_unused_configs = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+# Driver packages are optional and deliberately absent from most environments.
+[[tool.mypy.overrides]]
+module = [
+    "mysql.*",
+    "psycopg",
+    "psycopg2",
+    "oracledb",
+    "snowflake.*",
+    "azure.*",
+    "pandas",
+    "yaml",
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ARG", "RUF", "BLE"]
+ignore = [
+    "E501",    # line length is handled by the formatter
+    "B008",    # function calls in argument defaults are used deliberately here
+
+    # PEP 585 / 604 annotation syntax. The target is Python 3.9 and the
+    # annotations are written with typing.Optional/Dict/List on purpose: they
+    # read unambiguously for anyone on 3.9, and `from __future__ import
+    # annotations` is not a licence to make the source version-specific.
+    "UP006",   # non-pep585-annotation  -> Dict[str, x] rather than dict[str, x]
+    "UP007",   # non-pep604-annotation-union
+    "UP035",   # deprecated-import      -> typing.Dict, typing.List
+    "UP037",   # quoted-annotation      -> "ConnectionConfig" under TYPE_CHECKING
+    "UP045",   # non-pep604-annotation-optional
+
+    "N818",    # ConnectionFailure and PoolTimeout read better than ...Error
+    "B010",    # setattr() on exceptions is deliberate: dynamic diagnostic fields
+    "RUF022",  # __all__ is grouped by topic, not alphabetised
+    "RUF023",  # __slots__ likewise
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Backends implement an ABC; several hooks legitimately ignore an argument
+# that other backends use (server_side, name, config).
+"pydbconnect/backends/*" = ["ARG002"]
+"tests/*" = ["ARG001", "ARG002", "ARG005", "SIM117"]
+"examples/*" = ["E402"]
