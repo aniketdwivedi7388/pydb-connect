@@ -1,0 +1,155 @@
+# pydb-connect - example connections file
+#
+# Copy to connections.yaml and edit. This file is safe to commit: it contains
+# hostnames, database names and secret *references*, but no credential.
+#
+#   cp config/connections.example.yaml config/connections.yaml
+#   pydb config validate
+#   pydb ping local
+#
+# Precedence, highest first:
+#   1. explicit keyword arguments in code
+#   2. environment variables  PYDB_<CONNECTION>_<FIELD>
+#   3. this file
+#   4. the defaults block below, then library defaults
+#
+# See docs/configuration.md for the full reference.
+
+version: 1
+
+# Used when neither --profile nor $PYDB_PROFILE is set.
+default_profile: dev
+
+# Merged underneath every connection in every profile.
+defaults:
+  pool:
+    max_size: 5          # hard ceiling on open connections
+    timeout: 30          # seconds to wait for a free connection
+    pre_ping: true       # liveness check on checkout - one round trip, no mysteries
+    recycle: 1800        # reopen after 30 minutes; keep this below any proxy idle timeout
+  retry:
+    max_attempts: 3
+    initial_backoff: 0.2
+    max_backoff: 10
+    max_elapsed: 60      # wall-clock ceiling; the knob most people forget
+    jitter: full         # spreads a retry storm instead of re-forming it
+
+# Connections outside 'profiles' are visible in every profile.
+connections:
+
+  # Zero-setup local database. Used by the examples and the test suite.
+  local:
+    backend: sqlite
+    database: ./local.db
+    options:
+      journal_mode: WAL      # strongly recommended for any concurrency
+      foreign_keys: true     # OFF by default in SQLite, which surprises people
+      timeout: 10
+
+profiles:
+
+  # ----------------------------------------------------------------------- #
+  # dev - everything local, no credentials, no network
+  # ----------------------------------------------------------------------- #
+  dev:
+    defaults:
+      pool: {max_size: 2}
+    connections:
+      warehouse:
+        backend: sqlite
+        database: ./dev-warehouse.db
+
+      lake:
+        backend: sqlite
+        database: ./dev-lake.db
+
+  # ----------------------------------------------------------------------- #
+  # test - a real engine in a container, still no production data
+  # ----------------------------------------------------------------------- #
+  test:
+    connections:
+      warehouse:
+        backend: postgres
+        host: ${env:POSTGRES_HOST:-localhost}
+        port: 5432
+        database: analytics_test
+        schema: public
+        user: ${env:POSTGRES_USER:-postgres}
+        secret: env:POSTGRES_PASSWORD
+        options:
+          sslmode: prefer
+          application_name: pydb-connect-tests
+          connect_timeout: 5
+
+  # ----------------------------------------------------------------------- #
+  # prod - hostnames and references only. No credential appears here, ever.
+  # ----------------------------------------------------------------------- #
+  prod:
+    defaults:
+      pool: {max_size: 20, recycle: 900}
+      retry: {max_attempts: 5, max_elapsed: 120}
+    connections:
+
+      # PostgreSQL: password from the environment, injected by the deployment.
+      warehouse:
+        backend: postgres
+        host: ${env:PGHOST}
+        port: 5432
+        database: analytics
+        schema: reporting
+        user: etl_writer
+        secret: env:PGPASSWORD
+        sql_guard: error             # refuse string-interpolated SQL outright
+        options:
+          sslmode: require
+          application_name: nightly-load
+          connect_timeout: 10
+
+      # MySQL: password from a mounted Kubernetes secret. Rotates without a restart.
+      orders:
+        backend: mysql
+        host: mysql.internal
+        port: 3306
+        database: orders
+        user: etl
+        secret: file:/run/secrets/mysql-password
+        options:
+          charset: utf8mb4          # not 'utf8', which is 3-byte
+          connection_timeout: 10
+          allow_local_infile: true  # required for copy_from
+
+      # Oracle: thin mode, no Instant Client needed.
+      erp:
+        backend: oracle
+        host: ora.internal
+        port: 1521
+        database: ORCLPDB1          # service name
+        schema: STAGING
+        user: ETL_USER
+        secret: keyvault:my-vault/oracle-etl-password
+        options:
+          arraysize: 5000
+
+      # Snowflake: key-pair auth; 'secret' is the key passphrase.
+      analytics:
+        backend: snowflake
+        database: ANALYTICS
+        schema: PUBLIC
+        user: ETL_SVC
+        secret: keyvault:my-vault/snowflake-key-passphrase
+        options:
+          account: ab12345.eu-west-1
+          warehouse: LOAD_WH
+          role: TRANSFORMER
+          private_key_file: /run/secrets/snowflake_rsa_key.p8
+          client_session_keep_alive: true
+
+      # Azure Data Lake Gen2. No secret at all: managed identity via
+      # DefaultAzureCredential. Nothing to store, nothing to rotate.
+      lake:
+        backend: adls
+        host: mystorageacct
+        database: raw               # container / filesystem name
+        options:
+          auth: default
+          endpoint_suffix: core.windows.net
